@@ -7,21 +7,17 @@ from . import views
 urlpatterns = [
     path('login/', views.login),
     path('logout/', views.logout),
-
-    
-    # path('get_routes/', views.get_routes),
-    
-    # path('get_schedule/<str:route>/', views.get_schedule),
-    # path('edit_schedule/<str:route>', views.edit_time),
     
     path('add_coordinates/<str:route>/', views.add_route_coordinates),
-    # path('get_coordinates/<str:route>/', views.get_coordinates),    
     
-    path('save_fare/', views.edit_fare),
-    # path('get_fare/<str:route>', views.get_fare),
+    path('save_fares/', views.save_fares),
+    path('delete_fare/', views.delete_fare),
+    
+    path('save_schedule/', views.save_schedules),
+    path('delete_schedule/', views.delete_schedule),
+    
     path('batch_data/', views.batch_request),
-    path('batch_data/<str:route_url>/', views.batch_request, name='home_page'),
-    # path('<str:route>/', views.get_schedules),
+    
+    path('all_routes/' , views.routes_with_info ),
+    path('add_route/', views.add_route)
 ]
-# Compare this snippet from api/views.py:
-# from django.http import JsonResponse

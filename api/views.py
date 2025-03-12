@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from .models import Routes, RouteCoordinates, RouteFares, RouteSchedules
 import ast
-
+from .permissions import IsRouteOwner
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -30,42 +30,112 @@ def logout(request):
     django_logout(request)
     return Response({'message': 'Logout successful'}, status=status.HTTP_200_OK)
 
-
-
 @api_view(['POST'])
-@permission_classes([AllowAny])
-def edit_fare(request):
-    # {'fares': [{'fare_title': 'bamboo', 'fare': '5', 'student_fare': 30}, {'fare_title': 'iyte', 'fare': 75, 'student_fare': 50}]}
-    
+@permission_classes([IsAuthenticated, IsRouteOwner])  # İzin eklenmiş hali
+def save_fares(request):
     data = request.data
-    print(data)
-    route = Routes.objects.get(route_url=data['route_url'])
-    for title, fare, student_fare in data['fares']:
-        route_fare =RouteFares.objects.get_or_create(route=route, fare_title=title)
-        burada kladım buraya eklemem gerekn şey fareyi id ile sçemek 
-        route_fare.fare_title=title 
-        route_fare.fare=title 
-        route_fare.student_fare=title 
-        route_fare.save()
-    return Response({'message': 'edit_fare'}, status=status.HTTP_200_OK)
+    route_url = data.get('route_url')
+    
+    try:
+        related_route = Routes.objects.get(route_url=route_url)
+        
+        # Kullanıcı bu güzergahı düzenleyebilir mi kontrol et
+        if not IsRouteOwner().has_object_permission(request, None, related_route):
+            return Response({'error': 'You do not have permission to edit this route'}, status=status.HTTP_403_FORBIDDEN)
+        
+        for fare_data in data.get('fares', []):
+            fare_id = fare_data.get('id')
+            fare_title = fare_data.get('fare_title')
+            fare = fare_data.get('fare')
+            student_fare = fare_data.get('student_fare')
+
+            if fare_id is None or fare_title is None:
+                continue
+
+            route_fare, created = RouteFares.objects.get_or_create(
+                id=fare_id,
+                defaults={'route': related_route, 'fare_title': fare_title, 'fare': fare, 'student_fare': student_fare}
+            )
+
+            if not created:
+                route_fare.fare_title = fare_title
+                route_fare.fare = fare
+                route_fare.student_fare = student_fare
+                route_fare.save()
+
+        return Response({'message': 'edit_fare'}, status=status.HTTP_200_OK)
+    
+    except Routes.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_schedules(request, route):
-    pass
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, IsRouteOwner])  
+def delete_fare(request):
+    try:
+        deleted_id = request.query_params.get('deleted_id')  # DELETE için query parametresinden al
+        if not deleted_id:
+            return Response({'error': 'deleted_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        related_fare = RouteFares.objects.get(id=deleted_id)
+
+        if not IsRouteOwner().has_object_permission(request, None, related_fare.route):
+            return Response({'error': 'You do not have permission to edit this route'}, status=status.HTTP_403_FORBIDDEN)
+
+        related_fare.delete()
+        return Response({'message': 'Fare deleted successfully'}, status=status.HTTP_200_OK)
+
+    except RouteFares.DoesNotExist:
+        return Response({'error': 'Fare not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def edit_schedule(request):
-    return Response({'message': 'edit_time'}, status=status.HTTP_200_OK)
+@permission_classes([IsAuthenticated,IsRouteOwner])  # Changed to IsAuthenticated
+def save_schedules(request):
+    data = request.data
+    # {'route_url': '', 'schedule': [{'id': 1741427314012, 'start_time': '14:14', 'plate': '1414'}]}
+    route_url = data.get("route_url")
+    related_route = Routes.objects.get(route_url=route_url)
+    if not IsRouteOwner().has_object_permission(request, None, related_route):
+        return Response({'error': 'You do not have permission to edit this route'}, status=status.HTTP_403_FORBIDDEN)
+    for schedule_data in data.get("schedule",[]):
+        sch_id = schedule_data.get('id')
+        start_time = schedule_data.get('start_time')
+        schedule , created = RouteSchedules.objects.get_or_create(
+            id = sch_id,
+            defaults = {"route":related_route,"start_time":start_time}
+            )
+        if not created:
+            schedule.start_time=start_time
+            schedule.save()    
+    return Response({'message': 'Schedule saved'}, status=status.HTTP_200_OK)
 
 
-@api_view(['POST', 'GET'])
-@permission_classes([AllowAny])
-def add_route_coordinates(request,route):
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated,IsRouteOwner])  # Changed to IsAuthenticated
+def delete_schedule(request):
+    try:
+        deleted_id = request.query_params.get('deleted_id')  # DELETE için query parametresinden al
+        if not deleted_id:
+            return Response({'error': 'deleted_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        related_schedule = RouteSchedules.objects.get(id=deleted_id)
+        
+        if not IsRouteOwner().has_object_permission(request, None, related_schedule.route):
+            return Response({'error': 'You do not have permission to edit this route'}, status=status.HTTP_403_FORBIDDEN)
+        
+        related_schedule.delete()
+        return Response({'message': 'Schedule deleted successfully'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])  # Changed to IsAuthenticated
+def add_route_coordinates(request,route_url):
     try:
         if request.method == 'GET':
             return Response({'message': 'Send POST request to add coordinates'}, status=status.HTTP_200_OK)
@@ -74,7 +144,7 @@ def add_route_coordinates(request,route):
 
         coordinates_list = ast.literal_eval(coordinates)
 
-        route = Routes.objects.create(route=route)
+        route = Routes.objects.create(route_url=route_url)
         for i, (latitude, longitude) in enumerate(coordinates_list):
             RouteCoordinates.objects.create(route=route, node_number=i, latitude=latitude, longitude=longitude)
 
@@ -85,63 +155,97 @@ def add_route_coordinates(request,route):
 
 
 @api_view(['POST','GET'])
-def batch_request(request, route_url="route-deneme"):
+@permission_classes([AllowAny])  # Reading data can remain public
+def batch_request(request):
     try:
         data = request.data
+        route_url = data.get('route_url')
         response = {}
-        route = Routes.objects.get(route_url=route_url)
         if 'routes' in data:
+            print('routes')
             response['routes'] = _get_all_routes()
-        if 'schedules' in data:
-            response['schedules'] = _get_schedule(route = route)
+        if route_url != None and route_url != '':
+            route = Routes.objects.get(route_url=route_url)
+            
+            if 'schedules' in data:
+                response['schedules'] = _get_schedule(route = route)
+            if 'fares' in data:
+                response['fares'] = _get_fare(route = route)
 
-        if 'fares' in data:
-            response['fares'] = _get_fare(route = route)
-
-        if 'coordinates' in data:
-            response['coordinates'] = _get_coordinates(route = route)
-        if 'routeInfo' in data:
-            response['routeInfo'] = _get_route_info(route = route)
+            if 'coordinates' in data:
+                response['coordinates'] = _get_coordinates(route = route)
+            if 'routeInfo' in data:
+                response['routeInfo'] = _get_route_info(route = route)
         return Response(response, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+
+@api_view(['GET'])
+@permission_classes([AllowAny]) 
+def routes_with_info(request):
+    try:
+        response = []
+        routes = Routes.objects.all()
+        for route in routes:
+            route_dict = {
+                'route_id' : route.id,
+                'route_start': route.route_start,
+                'route_end': route.route_end,   
+                'route_url': route.route_url,
+                'route_distance' : route.route_distance,
+                'route_duration' : route.route_duration,
+            }
+            response.append(route_dict)    
+        return Response(response, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])  # İzin eklenmiş hali
+def add_route(request):
+    try:
+        data = request.data
+        route_start = data.get('route_start')
+        route_end = data.get('route_end')
+        route_distance = data.get('route_distance')
+        route_duration = data.get('route_duration')
+        
+        route = Routes.objects.create(route_start=route_start, route_end=route_end, route_distance=route_distance, route_duration=route_duration)
+        return Response({'message': 'Route added successfully', 'route_url': route.route_url}, status=status.HTTP_201_CREATED)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 def _get_all_routes():
-    routes = list(Routes.objects.values('route','route_url'))
+    routes = list(Routes.objects.values('id','route_start','route_end','route_url'))
     print(routes)
     return routes
+
+
 def _get_schedule(route):
     try:
-        route_obj = Routes.objects.get(route=route)
-        
-        return RouteSchedules.objects.filter(route=route_obj).values_list('start_time',flat=True)
-
+        return list(RouteSchedules.objects.filter(route=route).values('id','start_time').order_by('start_time'))
     except ObjectDoesNotExist:
         return []
 
+
 def _get_coordinates(route):
     try:
-        route_id = Routes.objects.values_list('id', flat=True).get(route=route)
-        return list(RouteCoordinates.objects.filter(route_id=route_id).values_list('latitude', 'longitude'))
+        return list(RouteCoordinates.objects.filter(route=route).values_list('latitude', 'longitude'))
     except ObjectDoesNotExist:
         return []
 
 
 def _get_fare(route):
     try:
-        route_obj = Routes.objects.get(route=route)
-        return list(RouteFares.objects.filter(route=route_obj).values('fare_title','fare','student_fare'))
+        return list(RouteFares.objects.filter(route=route).values('id','fare_title','fare','student_fare'))
     except ObjectDoesNotExist:
         return []
 
+
 def _get_route_info(route):
     try:
-        route_obj = Routes.objects.get(route=route)
-        route_distance = route_obj.route_distance
-        route_duration = route_obj.route_duration
-        return {'route_distance': route_distance, 'route_duration': route_duration}
+        return {'route_start': route.route_start, 'route_end': route.route_end, 'route_distance': route.route_distance, 'route_duration': route.route_duration}
     except ObjectDoesNotExist:
-        return {'route_distance': None, 'route_duration': None}
-
+        return {"route_start": "","route_end": "","route_distance": 0,"route_duration": 0}
