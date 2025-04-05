@@ -8,8 +8,6 @@ urlpatterns = [
     path('login/', views.login),
     path('logout/', views.logout),
     
-    path('add_coordinates/<str:route>/', views.add_route_coordinates),
-    
     path('save_fares/', views.save_fares),
     path('delete_fare/', views.delete_fare),
     
@@ -19,5 +17,5 @@ urlpatterns = [
     path('batch_data/', views.batch_request),
     
     path('all_routes/' , views.routes_with_info ),
-    path('add_route/', views.add_route)
+    path('save_route/', views.save_route)
 ]

@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from .models import Routes, RouteCoordinates, RouteFares, RouteSchedules
+from .models import Routes, RouteFares, RouteSchedules
 import ast
 from .permissions import IsRouteOwner
 
@@ -96,18 +96,21 @@ def delete_fare(request):
 @permission_classes([IsAuthenticated,IsRouteOwner])  # Changed to IsAuthenticated
 def save_schedules(request):
     data = request.data
+    print(data)
     # {'route_url': '', 'schedule': [{'id': 1741427314012, 'start_time': '14:14', 'plate': '1414'}]}
     route_url = data.get("route_url")
     related_route = Routes.objects.get(route_url=route_url)
+    
     if not IsRouteOwner().has_object_permission(request, None, related_route):
         return Response({'error': 'You do not have permission to edit this route'}, status=status.HTTP_403_FORBIDDEN)
-    for schedule_data in data.get("schedule",[]):
+    for schedule_data in data.get("schedules",[]):
         sch_id = schedule_data.get('id')
         start_time = schedule_data.get('start_time')
         schedule , created = RouteSchedules.objects.get_or_create(
             id = sch_id,
             defaults = {"route":related_route,"start_time":start_time}
             )
+        print(schedule_data)
         if not created:
             schedule.start_time=start_time
             schedule.save()    
@@ -133,25 +136,6 @@ def delete_schedule(request):
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])  # Changed to IsAuthenticated
-def add_route_coordinates(request,route_url):
-    try:
-        if request.method == 'GET':
-            return Response({'message': 'Send POST request to add coordinates'}, status=status.HTTP_200_OK)
-        with open('coordinates.txt', 'r') as f:
-            coordinates = f.read()
-
-        coordinates_list = ast.literal_eval(coordinates)
-
-        route = Routes.objects.create(route_url=route_url)
-        for i, (latitude, longitude) in enumerate(coordinates_list):
-            RouteCoordinates.objects.create(route=route, node_number=i, latitude=latitude, longitude=longitude)
-
-        return Response({'message': 'Coordinates added successfully'}, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST','GET'])
@@ -172,10 +156,14 @@ def batch_request(request):
             if 'fares' in data:
                 response['fares'] = _get_fare(route = route)
 
-            if 'coordinates' in data:
-                response['coordinates'] = _get_coordinates(route = route)
+            if 'coordinates' in data or 'kmlUrl' in data:
+                if route.kml_file:
+                    response['kmlUrl'] = request.build_absolute_uri(route.kml_file.url)
+                else:
+                    response['error'] = "KML file not found"
             if 'routeInfo' in data:
                 response['routeInfo'] = _get_route_info(route = route)
+        print(response)
         return Response(response, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -202,21 +190,42 @@ def routes_with_info(request):
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])  # İzin eklenmiş hali
-def add_route(request):
+@permission_classes([IsAuthenticated])
+def save_route(request):
     try:
         data = request.data
+        route_id = data.get('route_id')
         route_start = data.get('route_start')
         route_end = data.get('route_end')
         route_distance = data.get('route_distance')
         route_duration = data.get('route_duration')
-        
-        route = Routes.objects.create(route_start=route_start, route_end=route_end, route_distance=route_distance, route_duration=route_duration)
-        return Response({'message': 'Route added successfully', 'route_url': route.route_url}, status=status.HTTP_201_CREATED)
+        route_coordinates = data.get('route_coordinates') 
+        related_route, created = Routes.objects.get(route_id = route_id, 
+                defaults={'route_start': route_start, 'route_end': route_end, 'route_distance': route_distance, 'route_duration': route_duration})
+        _add_route_coordinates(related_route,route_coordinates)
+
+        # route = Routes.objects.create(route_start=route_start, route_end=route_end, route_distance=route_distance, route_duration=route_duration)
+        return Response({'message': 'Route added successfully', 'route_url': data}, status=status.HTTP_201_CREATED)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+def _add_route_coordinates(route, coordinates):
+    try:
+        
+        # with open('coordinates.txt', 'r') as f:
+        #     coordinates = f.read()
+
+        # coordinates_list = ast.literal_eval(coordinates)
+
+        for i, (latitude, longitude) in enumerate(coordinates):
+            RouteCoordinates.objects.create(route=route, node_number=i, latitude=latitude, longitude=longitude)
+        return True
+    except Exception as e:
+        print(f"Error adding route coordinates: {e}")
+        raise
+    
 def _get_all_routes():
     routes = list(Routes.objects.values('id','route_start','route_end','route_url'))
     print(routes)

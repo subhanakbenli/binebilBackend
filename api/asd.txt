@@ -1,0 +1,5 @@
+class RouteCoordinates(models.Model):
+    route = models.ForeignKey(Routes, on_delete=models.CASCADE, verbose_name="route")
+    node_number = models.IntegerField(verbose_name="node_number", unique=True)
+    latitude = models.FloatField(verbose_name="latitude", null=True, blank=True)
+    longitude = models.FloatField(verbose_name="longitude", null=True, blank=True)

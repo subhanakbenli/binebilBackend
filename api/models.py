@@ -5,11 +5,12 @@ from django.utils.text import slugify
 from django.db import models
 from django.utils.text import slugify
 
+
 class Routes(models.Model):
     route_start = models.CharField(max_length=255, verbose_name="route_start")
     route_end = models.CharField(max_length=255, verbose_name="route_end")
     route_url = models.CharField(max_length=255, verbose_name="route_url", unique=True)
-    
+    kml_file = models.FileField(upload_to='routes/', null=True, blank=True)
     route_distance = models.FloatField(verbose_name="distance", null=True, blank=True)
     route_duration = models.FloatField(verbose_name="duration", null=True, blank=True)
     
@@ -33,11 +34,7 @@ class Routes(models.Model):
     def __str__(self):
         return f"{self.route_start} - {self.route_end}"
 
-class RouteCoordinates(models.Model):
-    route = models.ForeignKey(Routes, on_delete=models.CASCADE, verbose_name="route")
-    node_number = models.IntegerField(verbose_name="node_number", unique=True)
-    latitude = models.FloatField(verbose_name="latitude", null=True, blank=True)
-    longitude = models.FloatField(verbose_name="longitude", null=True, blank=True)
+
      
 class RouteSchedules(models.Model):
     route = models.ForeignKey(Routes, on_delete=models.CASCADE, verbose_name="route")
